@@ -4,11 +4,14 @@ Date: 4/8/2023
 
 Description: This file contains the functions that help make the buffer function work!
 """
+# Import necessary things
 import arcpy
 from arcpy import env
 import math
 import numpy as np
 import os
+import signal
+import time
 
 def PointsBuffer(returnDir,inputFile, outputName, buffSize, pointsForBuff = 87):
     '''
@@ -34,9 +37,12 @@ def PointsBuffer(returnDir,inputFile, outputName, buffSize, pointsForBuff = 87):
 
     Returns
     -------
-    None.
+    str
+        A message as a string saying whether or not the buffer was successful or errored out.
     
-    Logic: This function will first create an empty list called centerCoordLst. This list will
+    Description
+    -----------
+    The PoitnsBuffer function will first create an empty list called centerCoordLst. This list will
     consist of tuples of (x,y) pairs representing all the points in the inputFile. Then it will
     get the input files coordinate system and store it in inputCoordinateSystem. Then it briefly
     checks to make sure that the output name and directory that you have inputted does not already exist.
@@ -78,60 +84,126 @@ def PointsBuffer(returnDir,inputFile, outputName, buffSize, pointsForBuff = 87):
     Then we add this newly generated point to our CircleCoordPoints. Once
     all the points have been generated stuff them into an arcpy array, and then put that arcpy array
     into an arcpy polygon and then insert that arcpy polygon as a new row in the outputfile. This
-    process repeats for every point in the inputed shape file.
+    process repeats for every point in the inputed shape file. This will try the above and if an error
+    occurs will return a string saying so. This is for functionality with the GUI.
     '''
+    # Try the following buffer methods
     try:
+        # Create an empty list of center coordinates for the inputted points
         centerCoordLst = []
+        # Get the coordinate system of the inputted file
         inputCoordinateSystem = arcpy.Describe(inputFile).spatialReference
         
+        # Make sure to delete the output file if it already exists
         if (os.path.exists(os.path.join(returnDir,outputName))):
             arcpy.management.Delete(os.path.join(returnDir,outputName))
-            
+        
+        # Use a search cursor to get the x and y coordinates of each point in the point file
         with arcpy.da.SearchCursor(inputFile,['SHAPE@X','SHAPE@Y']) as sCursor:
             for row in sCursor:
                 centerCoordLst.append((row[0],row[1]))
         
-        
+        # Create a new shapefile based on the input to the function
         arcpy.CreateFeatureclass_management(returnDir, outputName,'POLYGON',spatial_reference=inputCoordinateSystem)
         
-        
+        # Open a insert cursor on the new shapefile
         with arcpy.da.InsertCursor(os.path.join(returnDir,outputName), ['SHAPE@']) as iCursor:
+            # Loop through the list of coordinates of the point
             for xCenterCoord,yCenterCoord in centerCoordLst:
+                # Create an empty list that will store the buffer points
                 circleCoordPoints = []
+                # Get angles equal width apart from one another from 0 to 360 
                 for angle in np.linspace(0,360,pointsForBuff,endpoint=False):
+                    # For each angle calculate the new X and Y by constructing unit circle points
+                    # (cos for x and sin for y) and then multiply by buffSize and add to center points
                     newX = buffSize*math.cos(math.radians(angle))+xCenterCoord
                     newY = buffSize*math.sin(math.radians(angle))+yCenterCoord
+                    # Add that point to the buffer points list
                     circleCoordPoints.append(arcpy.Point(newX,newY))
-        
+                # Create an arcpy array from the buffer poitns and then a polygon from the array.
+                # Insert the polygon
                 circlePointArray = arcpy.Array(circleCoordPoints)
                 bufferPolygon = arcpy.Polygon(circlePointArray)
                 iCursor.insertRow([bufferPolygon])
+        # If this all occurs then the buffer was successful and a success message should be returned.
         return "The buffer was successful!"
+    # If an error occured, the buffer was unsuccessful.
     except:
         return "The buffer was unsuccessful. Sorry!"
             
 def lineBuffer(returnDir,inputFile, outputName, buffSize):
-    try:
-        inputCoordinateSystem = arcpy.Describe(inputFile).spatialReference
+    '''
+    Parameters
+    ----------
+    returnDir : This should be a string representing a file path.
+        This should be a string representing a file path to the directory/folder you wish to save
+        your created buffer file to.
+    inputFile : This should be a string representing a file path.
+        This should be a string representing a file path that points to a valid shape file made up 
+        of points.
+    outputName : This should be a string representing a file name and extension.
+        This should be a string representing a file name and extension. This will be 
+        the name of the outputted buffer shape file.
+    buffSize : This should be a number.
+        This should be a number representing how big you want the buffer to be. Currently this
+        function is limited to only doing buffers of the same unit that the inputFile exists in.
+
+    Returns
+    -------
+    str
+        This function returns a string representing a success or failure message.
         
+    Description
+    -----------
+    The lineBuffer function utilizes a crude methodology to build a line buffer. First it sets up
+    intermediate and output shape files in the same coordinate system as the inputted file.
+    This function loops through each line in a POLYLINE geometry. It looks at each point in the line
+    and creates a circle buffer around each point using the same methods as the cirlce buffer funciton.
+    It then goes to the next point while saving the previous point. It then creates a rectangle of 
+    width 2*BufferSize around the line that connects the current point and the previous point. 
+    This is done by creating a unit vector in the direction of the line and then multiplying this by 
+    the buffer size. The vector is constructed by doing <dx,dy> where dx = currentPointX - prevPointX
+    and dy = currentPointY - prevPointY. It is then converted to a unit vector by dividing by the 
+    distance which is the square root of (dx squared + dy squared). Finally it is multiplied by the 
+    buffer size. Then it builds the rectangle by starting at each endpoint of the line and adding 
+    to it the perpendicular vector which is <-dy,dx>. It adds to each endpoint both <-dy,dx> and
+    <dy,-dx> so get the four endpoints of the rectangle. It then makes these into a polygon and adds
+    it to the intermediate file. Finally, at the end it calls arcpy's dissolve function to create
+    one polygon at the output file name from the many polygons created in the intermediate file.
+
+    '''
+    # Try the following buffer methods
+    try:
+        # Get the inputFile's coordinate system
+        inputCoordinateSystem = arcpy.Describe(inputFile).spatialReference
+        # Delete intermediate and output files if they exist
         if (os.path.exists(os.path.join(returnDir,outputName))):
             arcpy.management.Delete(os.path.join(returnDir,outputName))
         if (os.path.exists(os.path.join(returnDir,'intermediate.shp'))):
             arcpy.management.Delete(os.path.join(returnDir,'intermediate.shp'))
+        # Create an intermediate shape file
         arcpy.CreateFeatureclass_management(returnDir, 'intermediate.shp','POLYGON',spatial_reference=inputCoordinateSystem)
         
+        # Open an insert cursor on the intermediate shape file
         with arcpy.da.InsertCursor(os.path.join(returnDir,'intermediate.shp'), ['SHAPE@']) as iCursor:
+            # Open a search cursor on the input file
             with arcpy.da.SearchCursor(inputFile,['SHAPE@']) as SearchCursor:
+                # Go through every line in the search cursor
                 for row in SearchCursor:
-                    # Access the row containing line information
+                    # Grab the geometry of that line
                     pLine = row[0]
                     # Get the Array containing the lines points by doing .getPart(0)
                     pLineArray = pLine.getPart(0)
                     # Some lines may have more than two points. Since they are stored in an array
                     # Just loop through the array accessing individual elt points each time
+                    # Set up a prevPoint that will initially be None
                     prevPoint = None
+                    # Loop through the points
                     for point in pLineArray:
+                        # Make a list for circular buffer points
                         circleCoordPoints = []
+                        # Make a circle buffer around each point using methods described in
+                        # point buffer
                         for angle in np.linspace(0,360,87,endpoint=False):
                             newX = buffSize*math.cos(math.radians(angle))+point.X
                             newY = buffSize*math.sin(math.radians(angle))+point.Y
@@ -139,13 +211,18 @@ def lineBuffer(returnDir,inputFile, outputName, buffSize):
                         circlePointArray = arcpy.Array(circleCoordPoints)
                         bufferPolygon = arcpy.Polygon(circlePointArray)
                         iCursor.insertRow([bufferPolygon])
+                        # If the prevPoint is not none, we can construct a rectangle Buffer
                         if(prevPoint!=None):
+                            # Calculate a vector in the direction of the line of size buffSize
                             dx = point.X - prevPoint.X
                             dy = point.Y - prevPoint.Y
                             D = math.sqrt(dx*dx + dy*dy)
                             dx = buffSize * dx / D
                             dy = buffSize*dy/D
                             rectangleCoords = []
+                            # Add the four points of the buffer rectangle by using the 
+                            # perpendicular vector and then make a polygon out of them and add to 
+                            # intermediate shape file
                             rectangleCoords.append(arcpy.Point(prevPoint.X-dy,prevPoint.Y+dx))
                             rectangleCoords.append(arcpy.Point(prevPoint.X+dy,prevPoint.Y-dx))
                             rectangleCoords.append(arcpy.Point(point.X+dy,point.Y-dx))
@@ -153,74 +230,234 @@ def lineBuffer(returnDir,inputFile, outputName, buffSize):
                             rectangleArray = arcpy.Array(rectangleCoords)
                             rectanglePolygon = arcpy.Polygon(rectangleArray)
                             iCursor.insertRow([rectanglePolygon])
+                        # set the previous point to the current point before moving on.
                         prevPoint = point
-                
+        # Use arcpy's dissolve to create the shape file for the output.
         arcpy.management.Dissolve(os.path.join(returnDir,'intermediate.shp'),os.path.join(returnDir,outputName))
         return "The buffer was successful!"
+    # If an error occured, the buffer was unsuccessful.
     except:
         return "The buffer was unsuccessful. Sorry!"
   
 def polygonBuffer(returnDir,inputFile, outputName, buffSize):
+    '''
+    Parameters
+    ----------
+    returnDir : This should be a string representing a file path.
+        This should be a string representing a file path to the directory/folder you wish to save
+        your created buffer file to.
+    inputFile : This should be a string representing a file path.
+        This should be a string representing a file path that points to a valid shape file made up 
+        of points.
+    outputName : This should be a string representing a file name and extension.
+        This should be a string representing a file name and extension. This will be 
+        the name of the outputted buffer shape file.
+    buffSize : This should be a number.
+        This should be a number representing how big you want the buffer to be. Currently this
+        function is limited to only doing buffers of the same unit that the inputFile exists in.
+
+    Returns
+    -------
+    str
+        This function returns a string representing a success or failure message.
+        
+    Description
+    -----------
+    The polygonBuffer function uses a very crude methodology to create a polygon buffer. It should be warned
+    that this is definitely not using the most effective algorithm to do so and creates many
+    polygons in the process. Essentially, this function uses ArcPy methods to grab the POLYLINE
+    boundary(s) of the inputted polygon shape file. It then performs essentially a line buffer on that 
+    POLYLINE boundary (adding circle buffers around each point and constructing rectangle buffers
+    around each line). Further documentation on the line buffer methods can be found in the docstring 
+    for the line buffer function. It also adds the original polygon to the output layer. It should be
+    warned that the outputted buffer shape file will have many polygons to construct the buffer.
+
+    '''
+    # Try the following buffer methods
     try:
+        # Get the inputFile's coordinate system
         inputCoordinateSystem = arcpy.Describe(inputFile).spatialReference
         
+        # Delete intermediate and output files if they exist
         if (os.path.exists(os.path.join(returnDir,outputName))):
             arcpy.management.Delete(os.path.join(returnDir,outputName))
         if (os.path.exists(os.path.join(returnDir,'intermediate.shp'))):
             arcpy.management.Delete(os.path.join(returnDir,'intermediate.shp'))
+        # Create an intermediate shape file
         arcpy.CreateFeatureclass_management(returnDir, 'intermediate.shp','POLYGON',spatial_reference=inputCoordinateSystem)
         
+        # Open an insert cursor on the intermediate shape file
         with arcpy.da.InsertCursor(os.path.join(returnDir,'intermediate.shp'), ['SHAPE@']) as iCursor:
+            # Open a search cursor on the input shape file
             with arcpy.da.SearchCursor(inputFile,['SHAPE@']) as SearchCursor:
                 for row in SearchCursor:
-                    # Access the row containing line information
-                    pLine = row[0].boundary()
+                    # Access the row containing the polygons geometry and access its POLYLINE boundary
+                    # and store in the pLines
+                    pLines = row[0].boundary()
+                    # Insert the original polygon geometry into the intermediate
                     iCursor.insertRow([row[0]])
-                    # Get the Array containing the lines points by doing .getPart(0)
-                    pLineArray = pLine.getPart(0)
-                    # Some lines may have more than two points. Since they are stored in an array
-                    # Just loop through the array accessing individual elt points each time
-                    prevPoint = None
-                    for point in pLineArray:
-                        circleCoordPoints = []
-                        for angle in np.linspace(0,360,87,endpoint=False):
-                            newX = buffSize*math.cos(math.radians(angle))+point.X
-                            newY = buffSize*math.sin(math.radians(angle))+point.Y
-                            circleCoordPoints.append(arcpy.Point(newX,newY))
-                        circlePointArray = arcpy.Array(circleCoordPoints)
-                        bufferPolygon = arcpy.Polygon(circlePointArray)
-                        iCursor.insertRow([bufferPolygon])
-                        if(prevPoint!=None):
-                            dx = point.X - prevPoint.X
-                            dy = point.Y - prevPoint.Y
-                            D = math.sqrt(dx*dx + dy*dy)
-                            dx = buffSize * dx / D
-                            dy = buffSize*dy/D
-                            rectangleCoords = []
-                            rectangleCoords.append(arcpy.Point(prevPoint.X-dy,prevPoint.Y+dx))
-                            rectangleCoords.append(arcpy.Point(prevPoint.X+dy,prevPoint.Y-dx))
-                            rectangleCoords.append(arcpy.Point(point.X+dy,point.Y-dx))
-                            rectangleCoords.append(arcpy.Point(point.X-dy,point.Y+dx))
-                            rectangleArray = arcpy.Array(rectangleCoords)
-                            rectanglePolygon = arcpy.Polygon(rectangleArray)
-                            iCursor.insertRow([rectanglePolygon])
-                        prevPoint = point
-                
-        # arcpy.management.Dissolve(os.path.join(returnDir,'intermediate.shp'),os.path.join(returnDir,outputName))
+                    # Get the Array containing the POLYLINEs from the boundary
+                    pLineArray = pLines.getPart()
+                    # The polygon boundary may be composed of multiple POLYLINEs so loop through
+                    # each line
+                    for line in pLineArray:
+                        # Set the prevPoint to None to start for each line
+                        prevPoint = None
+                        # Loop through each point in the line
+                        for point in line:
+                            # Make a list for circular buffer points
+                            circleCoordPoints = []
+                            # Make a circle buffer around each point using methods described in
+                            # point buffer
+                            for angle in np.linspace(0,360,87,endpoint=False):
+                                newX = buffSize*math.cos(math.radians(angle))+point.X
+                                newY = buffSize*math.sin(math.radians(angle))+point.Y
+                                circleCoordPoints.append(arcpy.Point(newX,newY))
+                            circlePointArray = arcpy.Array(circleCoordPoints)
+                            bufferPolygon = arcpy.Polygon(circlePointArray)
+                            iCursor.insertRow([bufferPolygon])
+                            # If the prevPoint is not none, we can construct a rectangle Buffer
+                            if(prevPoint!=None):
+                                # Calculate a vector in the direction of the line of size buffSize
+                                dx = point.X - prevPoint.X
+                                dy = point.Y - prevPoint.Y
+                                D = math.sqrt(dx*dx + dy*dy)
+                                dx = buffSize * dx / D
+                                dy = buffSize*dy/D
+                                rectangleCoords = []
+                                # Add the four points of the buffer rectangle by using the 
+                                # perpendicular vector and then make a polygon out of them and add to 
+                                # intermediate shape file
+                                rectangleCoords.append(arcpy.Point(prevPoint.X-dy,prevPoint.Y+dx))
+                                rectangleCoords.append(arcpy.Point(prevPoint.X+dy,prevPoint.Y-dx))
+                                rectangleCoords.append(arcpy.Point(point.X+dy,point.Y-dx))
+                                rectangleCoords.append(arcpy.Point(point.X-dy,point.Y+dx))
+                                rectangleArray = arcpy.Array(rectangleCoords)
+                                rectanglePolygon = arcpy.Polygon(rectangleArray)
+                                iCursor.insertRow([rectanglePolygon])
+                            # set the previous point to the current point before moving on.
+                            prevPoint = point
+        #arcpy.management.Dissolve(os.path.join(returnDir,'intermediate.shp'),os.path.join(returnDir,outputName))
         return "The buffer was successful!"
+    # If an error occured, the buffer was unsuccessful.
     except:
         return "The buffer was unsuccessful. Sorry!"
     
     
 #print(polygonBuffer(r"C:/Users/caleb/GEOG 4303/CordsenCalebFinalProject/Test Results",r"C:/Users/caleb/GEOG 4303/CordsenCalebFinalProject/Test Data/boulder_city.shp","test.shp",50))    
-    
+
+def multiPointBuffer(returnDir,inputFile, outputName, buffSize):
+    '''
+    Parameters
+    ----------
+    returnDir : This should be a string representing a file path.
+        This should be a string representing a file path to the directory/folder you wish to save
+        your created buffer file to.
+    inputFile : This should be a string representing a file path.
+        This should be a string representing a file path that points to a valid shape file made up 
+        of points.
+    outputName : This should be a string representing a file name and extension.
+        This should be a string representing a file name and extension. This will be 
+        the name of the outputted buffer shape file.
+    buffSize : This should be a number.
+        This should be a number representing how big you want the buffer to be. Currently this
+        function is limited to only doing buffers of the same unit that the inputFile exists in.
+
+    Returns
+    -------
+    str
+        This function returns a string representing a success or failure message.
+        
+    Description
+    -----------
+    The multiPointBuffer function accesses all the points included in the multipoint feature and
+    applies the same methodology as the point buffer to each point in the multipoint feature. It creates
+    circular buffers around each point of the buffSize. For more documentation on how the circular
+    buffer works, see the PointsBuffer docstring.
+    '''
+    # Try the following buffer methods
+    try:
+        # Get the inputFile's coordinate system
+        inputCoordinateSystem = arcpy.Describe(inputFile).spatialReference
+        
+        # Delete output files if they exist
+        if (os.path.exists(os.path.join(returnDir,outputName))):
+            arcpy.management.Delete(os.path.join(returnDir,outputName))
+        # Create the output shape file
+        arcpy.CreateFeatureclass_management(returnDir, outputName,'POLYGON',spatial_reference=inputCoordinateSystem)
+        
+        # Open an insert cursor on the intermediate shape file
+        with arcpy.da.InsertCursor(os.path.join(returnDir,outputName), ['SHAPE@']) as iCursor:
+            # Open a search cursor on the input shape file
+            with arcpy.da.SearchCursor(inputFile,['SHAPE@']) as SearchCursor:
+                for row in SearchCursor:
+                    # Get the points from the multipoint feature by accessing the geometry
+                    # and getting part
+                    lstOfPoints = row[0].getPart()
+                    # Loop through the points
+                    for point in lstOfPoints:
+                        # Make an empty list to store the buffer points
+                        circleCoordPoints = []
+                        # Make a circle buffer around each point using methods described in
+                        # point buffer
+                        for angle in np.linspace(0,360,87,endpoint=False):
+                            newX = buffSize*math.cos(math.radians(angle))+point.X
+                            newY = buffSize*math.sin(math.radians(angle))+point.Y
+                            circleCoordPoints.append(arcpy.Point(newX,newY))
+                        circlePointArray = arcpy.Array(circleCoordPoints)
+                        bufferPolygon = arcpy.Polygon(circlePointArray)
+                        iCursor.insertRow([bufferPolygon])
+        # If this all happens return a success message
+        return "The buffer was successful!"
+    # If an error occured, the buffer was unsuccessful.
+    except:
+        return "The buffer was unsuccessful. Sorry!"
+
 def bufferMain(returnDir,inputFile, outputName, buffSize):
+    '''
+    Parameters
+    ----------
+    returnDir : This should be a string representing a file path.
+        This should be a string representing a file path to the directory/folder you wish to save
+        your created buffer file to.
+    inputFile : This should be a string representing a file path.
+        This should be a string representing a file path that points to a valid shape file made up 
+        of points.
+    outputName : This should be a string representing a file name and extension.
+        This should be a string representing a file name and extension. This will be 
+        the name of the outputted buffer shape file.
+    buffSize : This should be a number.
+        This should be a number representing how big you want the buffer to be. Currently this
+        function is limited to only doing buffers of the same unit that the inputFile exists in.
+
+    Returns
+    -------
+    str
+        This function returns a string representing a success or failure message.
+        
+    Description
+    -----------
+    The bufferMain function is the driver function for the GUI that runs buffer requests. It
+    detects the inputFile geometry and then calls the appropiate buffer function for the matching
+    geometry. For example, if the inputted geometry is a POLYGON, this function will call the 
+    polygonBuffer function. This function will return a success or failure message depending
+    on the subsequent buffer call. If the geometry type that was inputted does not match
+    POINT, POLYLINE, POLYGON, or MULTIPOINT then it will send back a message saying that it does not
+    recognize the geometry type.
+    '''
+    # Detect geometry type using ArcPy describe
     geoType = arcpy.Describe(inputFile).shapeType.upper()
+    # Check if it is of a certain Geometry type. If it is call that matching geometries
+    # specific buffer function
     if(geoType=="POINT"):
         return PointsBuffer(returnDir,inputFile,outputName,buffSize)
     elif(geoType=="POLYLINE"):
         return lineBuffer(returnDir,inputFile,outputName,buffSize)
     elif(geoType=="POLYGON"):
         return polygonBuffer(returnDir,inputFile,outputName,buffSize)
+    elif(geoType=="MULTIPOINT"):
+        return multiPointBuffer(returnDir,inputFile,outputName,buffSize)
+    # If it did not match any of the above geometries, return a failure message about not recognizing
+    # geometry type.
     else:
-        return "Sorry that kind of buffer is not yet available!"
+        return "Sorry that geometry type is not recognized and thus cannot be buffered!"
