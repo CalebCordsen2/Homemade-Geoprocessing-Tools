@@ -166,11 +166,39 @@ def buffer_page():
           )
     buffSizeLbl.pack()
     
-    def runBuffer(label1):
-        if(actualBufferSize == None or outFileName == None or inputFile == None or outDIR == None or outDIR=='' or inputFile==''):
-            label1.config(text="Please fill provide valid information to the forms above!")
+    currentUnitClick = StringVar()
+    currentUnitClick.set("")
+    bufferUnitEntry = OptionMenu(bufferPage,currentUnitClick,"meters","kilometers","decimeters","centimeters","millimeters","miles","yards","feet","inches","nautical miles")
+    bufferUnitEntry.pack()
+    bufferUnit = None
+    def submitUnit(label1):
+        nonlocal bufferUnit
+        if(currentUnitClick.get()!=""):
+            bufferUnit = currentUnitClick.get()
+            label1.config(text="Inputted buffer unit: "+bufferUnit)
         else:
-            label1.config(text=buffer.bufferMain(outDIR,inputFile,outFileName,actualBufferSize))
+            label1.config(text="You have not selected a unit type!")
+    Button(bufferPage,
+           text="Submit buffer unit.",
+           font=("TkMenuFont",14),
+           bg='#CCCCFF',
+           fg='#000066',
+           cursor='hand2',
+           command = lambda:submitUnit(buffUnitLbl)
+           ).pack()  
+    buffUnitLbl = Label(bufferPage,
+          text="",
+          bg=bgcl,
+          fg="white",
+          font=("TkMenuFont",9)
+          )
+    buffUnitLbl.pack()
+    
+    def runBuffer(label1):
+        if(actualBufferSize == None or outFileName == None or inputFile == None or outDIR == None or outDIR=='' or inputFile=='' or bufferUnit==None):
+            label1.config(text="Please provide valid information to the forms above!")
+        else:
+            label1.config(text=buffer.bufferMain(outDIR,inputFile,outFileName,actualBufferSize,bufferUnit))
     Button(bufferPage,
            text="Run Buffer",
            font=("TkMenuFont",14),
@@ -178,7 +206,7 @@ def buffer_page():
            fg='#000066',
            cursor='hand2',
            command = lambda:runBuffer(runBuffLbl)
-           ).pack(pady=30)
+           ).pack()
     runBuffLbl = Label(bufferPage,
           text="",
           bg=bgcl,
@@ -193,7 +221,7 @@ def buffer_page():
            fg='#000066',
            cursor='hand2',
            command = lambda:load_main()
-           ).pack(pady=30)
+           ).pack()
     
 def clip_page():
     clean_page(mainPage)
@@ -233,6 +261,7 @@ root.geometry('%dx%d+%d+%d' % (width, height, x, y))
 
 bgcl = "#990066"
 
+# Need a function to order points in a clockwise form
 mainPage = Frame(root,width=600,height=600,bg=bgcl)
 mainPage.grid(row=0,column=0)
 bufferPage = Frame(root,width=600,height=600,bg=bgcl)
