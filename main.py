@@ -12,6 +12,20 @@ from PIL import ImageTk
 
 ## Followed tkinter tutorial from this page https://www.youtube.com/watch?v=5qOnzF7RsNA&t=1227s
 def clean_page(frame):
+    '''
+    Parameters
+    ----------
+    frame : Frame
+        This is a tkinter frame that this function takes in.
+
+    Returns
+    -------
+    None.
+    
+    Description:
+        This function looks through the widgets currenlty existing on a frame and gets rid of them
+        in order to efficiently clean up the page and switch to new ones.
+    '''
     for widget in frame.winfo_children():
         widget.destroy()
 

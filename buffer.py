@@ -518,7 +518,7 @@ def multiPointBuffer(returnDir,inputFile, outputName, buffSize,buffUnit):
                         iCursor.insertRow([bufferPolygon])
         # If this all happens return a success message
         return "The buffer was successful!"
-    # If an error occured, the buffer was unsuccessful.
+    # If an error occured, the buffer was unsuccessful
     except:
         return "The buffer was unsuccessful. Sorry!"
 
