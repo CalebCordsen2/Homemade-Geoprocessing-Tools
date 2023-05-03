@@ -44,6 +44,7 @@ def load_main():
     clean_page(bufferPage)
     clean_page(clipPage)
     clean_page(batchBufferPage)
+    clean_page(batchClipPage)
     # Raise the mainPage frame
     mainPage.tkraise()
     mainPage.pack_propagate(False)
@@ -61,13 +62,22 @@ def load_main():
           ).pack()
     # Load a button that takes you to the clip tool
     Button(mainPage,
-           text="Clip Tool",
+           text="Singular Clip Tool",
            font=("TkMenuFont",14),
            bg='#CCCCFF',
            fg='#000066',
            cursor='hand2',
            command = lambda:clip_page()
            ).pack(pady=20)
+    # Load a button that takes you to the batch clip tool
+    Button(mainPage,
+           text="Batch Clip Tool",
+           font=("TkMenuFont",14),
+           bg='#CCCCFF',
+           fg='#000066',
+           cursor='hand2',
+           command = lambda:batchClip_page()
+           ).pack()
     # Load a button that takes you to the singular buffer page
     Button(mainPage,
            text="Singular Buffer Tool",
@@ -76,7 +86,7 @@ def load_main():
            fg='#000066',
            cursor='hand2',
            command = lambda:buffer_page()
-           ).pack()
+           ).pack(pady=20)
     # Load a button that takes you to the batch buffer page
     Button(mainPage,
            text="Batch Buffer Tool",
@@ -85,7 +95,7 @@ def load_main():
            fg='#000066',
            cursor='hand2',
            command = lambda:batchBuffer_page()
-           ).pack(pady=20)
+           ).pack()
  # ----------------------------------------------------------------------------------------------------------------------   
 def buffer_page():
     '''
@@ -446,9 +456,12 @@ def batchBuffer_page():
         nonlocal outDIRs
         # Get the file directory
         file_name = askdirectory()
-        # Set the label text to the selected file and append file_name to outDIRs
-        outDIRs.append(file_name)
-        label1.config(text="Current directory list size: "+str(len(outDIRs)))
+        if(file_name==""):
+            label1.config(text="Please select a valid directory.")
+        else:
+            # Set the label text to the selected file and append file_name to outDIRs
+            outDIRs.append(file_name)
+            label1.config(text="Current directory list size: "+str(len(outDIRs)))
     # Pack a button that prompts the user to select the output directory. On click it calls browse_outputDIR
     Button(batchBufferPage,
            text="Add a Output Directory For Processing",
@@ -489,10 +502,13 @@ def batchBuffer_page():
         nonlocal inputFiles
         # Get the file
         file_name = askopenfilename(filetypes=[("Shape Files","*.shp")])
-        # Append to inputFiles the file_name
-        inputFiles.append(file_name)
-        # Set the label text to selected file and set inputFile to that path
-        label1.config(text="Current input file list size: "+str(len(inputFiles)))
+        if(file_name==""):
+            label1.config(text="Please select a valid file.")
+        else:
+            # Append to inputFiles the file_name
+            inputFiles.append(file_name)
+            # Set the label text to selected file and set inputFile to that path
+            label1.config(text="Current input file list size: "+str(len(inputFiles)))
     # Pack in a button that will prompt user to input shape by calling above function
     Button(batchBufferPage,
            text="Add a Input Shape File For Processing",
@@ -944,7 +960,274 @@ def clip_page():
            cursor='hand2',
            command = lambda:load_main()
            ).pack()
-#-----------------------------------------------------------------------------------------------------------------------------     
+#-----------------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
+def batchClip_page():
+    '''
+    Returns
+    -------
+    None.
+    
+    Description:
+        This function loads the batch clip page of the GUI for Caleb's Geoprocessing Tools. It takes no 
+        inputs and returns nothing.
+    '''
+    # Clean the mainPage and raise the batchClipPage frame
+    clean_page(mainPage)
+    batchClipPage.tkraise()
+    batchClipPage.pack_propagate(False)
+    
+    # Pack in a label that displays a welcome message
+    Label(batchClipPage,
+          text="Welcome to the Batch Clip Tool!",
+          bg=bgcl,
+          fg="white",
+          font=("TkMenuFont",20)
+          ).pack()
+    # Pack in a label that says to fill out the information below
+    Label(batchClipPage,
+          text="Please fill out the information below!",
+          bg=bgcl,
+          fg="white",
+          font=("TkMenuFont",17)
+          ).pack(pady=20)
+    
+    # Create a variable within the batchClipPage function outDIR that stores
+    # the output directory for clip to be saved to. Set to empty list to start
+    outDIRs = []
+    def browse_outputDIR(label1):
+        '''
+        Parameters
+        ----------
+        label1 : A tkinter label
+            A tkinter label to change
+
+        Returns
+        -------
+        None.
+        
+        Description:
+            This function prompts the user to select a file directory. It stores the path in outDIRs and updates
+            a label on the buffer page to show the current list size
+        '''
+        # bring in outDIRs variable
+        nonlocal outDIRs
+        # Get the file directory
+        file_name = askdirectory()
+        if(file_name==""):
+            label1.config(text="Please select a valid directory.")
+        else:
+            # Set the label text to the selected file and append file_name to outDIRs
+            outDIRs.append(file_name)
+            label1.config(text="Current directory list size: "+str(len(outDIRs)))
+    # Pack a button that prompts the user to select the output directory. On click it calls browse_outputDIR
+    Button(batchClipPage,
+           text="Add a Output Directory For Processing",
+           font=("TkMenuFont",14),
+           bg='#CCCCFF',
+           fg='#000066',
+           cursor='hand2',
+           command = lambda:browse_outputDIR(outLbl)
+           ).pack()
+    # Pack a label that starts blank but will update based on outputDIR input
+    outLbl = Label(batchClipPage,
+          text="",
+          bg=bgcl,
+          fg="white",
+          font=("TkMenuFont",9)
+          )
+    outLbl.pack()
+    
+    # Create a text field for the user to enter a output file name
+    outputFileNameEntry = Entry(batchClipPage,width=50)
+    outputFileNameEntry.insert(END,"Please enter an output file name here. Must end in .shp")
+    outputFileNameEntry.pack()
+    # Make a variable outFileNames that will store the outFileNames.
+    outFileNames = []
+    def submitOutFile(label1):
+        '''
+        Parameters
+        ----------
+        label1 : A tkinter label
+            A tkinter label to change
+
+        Returns
+        -------
+        None.
+        
+        Description:
+            This function will append a filename to outFileNames and display current list size
+        '''
+        # Bring in the outFileNames variable
+        nonlocal outFileNames
+        # Only allow .shp file extensions. Update the label text to error if not
+        if(outputFileNameEntry.get()[-4:]!='.shp'):
+            label1.config(text='Sorry but you need to submit a .shp file name!')
+        else:
+            # Append user input to outFileNames and update label to show list size
+            outFileNames.append(outputFileNameEntry.get())
+            label1.config(text="Current output file name list size: "+str(len(outFileNames)))
+    # Load a submit button that calls above function on click
+    Button(batchClipPage,
+           text="Add a File Name For Processing",
+           font=("TkMenuFont",14),
+           bg='#CCCCFF',
+           fg='#000066',
+           cursor='hand2',
+           command = lambda:submitOutFile(outFileLbl)
+           ).pack()  
+    # Pack a blank label that will update on above button push
+    outFileLbl = Label(batchClipPage,
+          text="",
+          bg=bgcl,
+          fg="white",
+          font=("TkMenuFont",9)
+          )
+    outFileLbl.pack()
+    
+    # Create a variable within the batchClipPage function inputFile that stores
+    # the input shape file. Set to empty list to start
+    inputFiles = []
+    def browse_inputShape(label1):
+        '''
+        Parameters
+        ----------
+        label1 : A tkinter label
+            A tkinter label to change
+
+        Returns
+        -------
+        None.
+        
+        Description:
+            This function prompts the user to select a input file. It stores the path in inputFiles and updates
+            a label on the buffer page to show the current list size
+        '''
+        # Bring in inputFiles variable
+        nonlocal inputFiles
+        # Get the file
+        file_name = askopenfilename(filetypes=[("Shape Files","*.shp")])
+        if(file_name==""):
+            label1.config(text="Please select a valid file.")
+        else:
+            # Append to inputFiles the file_name
+            inputFiles.append(file_name)
+            # Set the label text to selected file and set inputFile to that path
+            label1.config(text="Current input file list size: "+str(len(inputFiles)))
+    # Pack in a button that will prompt user to input shape by calling above function
+    Button(batchClipPage,
+           text="Add a Input Shape File For Processing",
+           font=("TkMenuFont",14),
+           bg='#CCCCFF',
+           fg='#000066',
+           cursor='hand2',
+           command = lambda:browse_inputShape(inputLbl)
+           ).pack()
+    # Create a blank label that will update on the above button press
+    inputLbl = Label(batchClipPage,
+          text="",
+          bg=bgcl,
+          fg="white",
+          font=("TkMenuFont",9)
+          )
+    inputLbl.pack()
+    
+    # Create a variable within the batchClipPage function clipFiles that stores
+    # the clip shape files. Set to empty list to start
+    clipFiles = []
+    def browse_clipShape(label1):
+        '''
+        Parameters
+        ----------
+        label1 : A tkinter label
+            A tkinter label to change
+
+        Returns
+        -------
+        None.
+        
+        Description:
+            This function prompts the user to select a input file. It stores the path in inputFiles and updates
+            a label on the buffer page to show the current list size
+        '''
+        # Bring in inputFiles variable
+        nonlocal clipFiles
+        # Get the file
+        file_name = askopenfilename(filetypes=[("Shape Files","*.shp")])
+        if(file_name==""):
+            label1.config(text="Please select a valid file.")
+        else:
+            # Append to inputFiles the file_name
+            clipFiles.append(file_name)
+            # Set the label text to selected file and set inputFile to that path
+            label1.config(text="Current input file list size: "+str(len(clipFiles)))
+    # Pack in a button that will prompt user to input shape by calling above function
+    Button(batchClipPage,
+           text="Add a Clip Shape File For Processing",
+           font=("TkMenuFont",14),
+           bg='#CCCCFF',
+           fg='#000066',
+           cursor='hand2',
+           command = lambda:browse_clipShape(clipLbl)
+           ).pack()
+    # Create a blank label that will update on the above button press
+    clipLbl = Label(batchClipPage,
+          text="",
+          bg=bgcl,
+          fg="white",
+          font=("TkMenuFont",9)
+          )
+    clipLbl.pack()
+    
+    def runClip(label1):
+        '''
+        Parameters
+        ----------
+        label1 : A tkinter label
+            A tkinter label to change
+
+        Returns
+        -------
+        None.
+        
+        Description:
+            This function runs a batch clip based on inputs and updates label based on outcome of batch clip.
+        '''
+        # Check to make sure that there is inputs for all required fields. If not, update the label saying to fill out info
+        if(len(outDIRs)!=len(inputFiles) or len(inputFiles)!=len(outFileNames) or len(inputFiles)!=len(clipFiles)):
+            label1.config(text="All input lists must be the same size!")
+        elif(len(outDIRs)==0 or len(inputFiles)==0 or len(outFileNames)==0 or len(clipFiles)==0):
+            label1.config(text="All lists must be of at least size 1!")
+        else:
+            # If all information is there set the label to the return message from running the clip on inputs
+            label1.config(text=clip.batchClip(outDIRs,outFileNames,inputFiles,clipFiles))
+    # Pack a button that runs the clip using above function
+    Button(batchClipPage,
+           text="Run Batch Clip",
+           font=("TkMenuFont",14),
+           bg='#CCCCFF',
+           fg='#000066',
+           cursor='hand2',
+           command = lambda:runClip(runClipLbl)
+           ).pack()
+    # Pack a blank label that updates based on above button
+    runClipLbl = Label(batchClipPage,
+          text="",
+          bg=bgcl,
+          fg="white",
+          font=("TkMenuFont",9)
+          )
+    runClipLbl.pack()
+    # Pack a button that will take users back to main menu by calling load_main()
+    Button(batchClipPage,
+           text="Back to Main Menu",
+           font=("TkMenuFont",14),
+           bg='#CCCCFF',
+           fg='#000066',
+           cursor='hand2',
+           command = lambda:load_main()
+           ).pack()
+# -----------------------------------------------------------------------------------------------------------------------------     
 # Center and name window
 # Code for centering window inspired by https://coderslegacy.com/tkinter-center-window-on-screen/
 root = Tk()
@@ -970,6 +1253,8 @@ batchBufferPage = Frame(root,width=600,height=600,bg=bgcl)
 batchBufferPage.grid(row=0,column=0)
 clipPage = Frame(root,width=600,height=600,bg=bgcl)
 clipPage.grid(row=0,column=0)
+batchClipPage = Frame(root,width=600,height=600,bg=bgcl)
+batchClipPage.grid(row=0,column=0)
 
 # Load the main page to start
 load_main()

@@ -10,8 +10,6 @@ from arcpy import env
 import math
 import numpy as np
 import os
-import signal
-import time
 
 def unitConversion(inputFile,size,unit):
     '''
@@ -180,7 +178,8 @@ def PointsBuffer(returnDir,inputFile, outputName, buffSize, buffUnit, pointsForB
         # Use a search cursor to get the x and y coordinates of each point in the point file
         with arcpy.da.SearchCursor(inputFile,['SHAPE@X','SHAPE@Y']) as sCursor:
             for row in sCursor:
-                centerCoordLst.append((row[0],row[1]))
+                if(row[0]!=None):
+                    centerCoordLst.append((row[0],row[1]))
         
         # Create a new shapefile based on the input to the function
         arcpy.CreateFeatureclass_management(returnDir, outputName,'POLYGON',spatial_reference=inputCoordinateSystem)
@@ -279,48 +278,49 @@ def lineBuffer(returnDir,inputFile, outputName, buffSize, buffUnit):
             with arcpy.da.SearchCursor(inputFile,['SHAPE@']) as SearchCursor:
                 # Go through every line in the search cursor
                 for row in SearchCursor:
-                    # Grab the geometry of that line
-                    pLine = row[0]
-                    # Get the Array containing the lines points by doing .getPart(0)
-                    pLineArray = pLine.getPart(0)
-                    # Some lines may have more than two points. Since they are stored in an array
-                    # Just loop through the array accessing individual elt points each time
-                    # Set up a prevPoint that will initially be None
-                    prevPoint = None
-                    # Loop through the points
-                    for point in pLineArray:
-                        # Make a list for circular buffer points
-                        circleCoordPoints = []
-                        # Make a circle buffer around each point using methods described in
-                        # point buffer
-                        for angle in np.linspace(0,360,87,endpoint=False):
-                            newX = newBuffSize*math.cos(math.radians(angle))+point.X
-                            newY = newBuffSize*math.sin(math.radians(angle))+point.Y
-                            circleCoordPoints.append(arcpy.Point(newX,newY))
-                        circlePointArray = arcpy.Array(circleCoordPoints)
-                        bufferPolygon = arcpy.Polygon(circlePointArray)
-                        iCursor.insertRow([bufferPolygon])
-                        # If the prevPoint is not none, we can construct a rectangle Buffer
-                        if(prevPoint!=None):
-                            # Calculate a vector in the direction of the line of size newBuffSize
-                            dx = point.X - prevPoint.X
-                            dy = point.Y - prevPoint.Y
-                            D = math.sqrt(dx*dx + dy*dy)
-                            dx = newBuffSize * dx / D
-                            dy = newBuffSize*dy/D
-                            rectangleCoords = []
-                            # Add the four points of the buffer rectangle by using the 
-                            # perpendicular vector and then make a polygon out of them and add to 
-                            # intermediate shape file
-                            rectangleCoords.append(arcpy.Point(prevPoint.X-dy,prevPoint.Y+dx))
-                            rectangleCoords.append(arcpy.Point(prevPoint.X+dy,prevPoint.Y-dx))
-                            rectangleCoords.append(arcpy.Point(point.X+dy,point.Y-dx))
-                            rectangleCoords.append(arcpy.Point(point.X-dy,point.Y+dx))
-                            rectangleArray = arcpy.Array(rectangleCoords)
-                            rectanglePolygon = arcpy.Polygon(rectangleArray)
-                            iCursor.insertRow([rectanglePolygon])
-                        # set the previous point to the current point before moving on.
-                        prevPoint = point
+                    if(row[0]!=None):
+                        # Grab the geometry of that line
+                        pLine = row[0]
+                        # Get the Array containing the lines points by doing .getPart(0)
+                        pLineArray = pLine.getPart(0)
+                        # Some lines may have more than two points. Since they are stored in an array
+                        # Just loop through the array accessing individual elt points each time
+                        # Set up a prevPoint that will initially be None
+                        prevPoint = None
+                        # Loop through the points
+                        for point in pLineArray:
+                            # Make a list for circular buffer points
+                            circleCoordPoints = []
+                            # Make a circle buffer around each point using methods described in
+                            # point buffer
+                            for angle in np.linspace(0,360,87,endpoint=False):
+                                newX = newBuffSize*math.cos(math.radians(angle))+point.X
+                                newY = newBuffSize*math.sin(math.radians(angle))+point.Y
+                                circleCoordPoints.append(arcpy.Point(newX,newY))
+                            circlePointArray = arcpy.Array(circleCoordPoints)
+                            bufferPolygon = arcpy.Polygon(circlePointArray)
+                            iCursor.insertRow([bufferPolygon])
+                            # If the prevPoint is not none, we can construct a rectangle Buffer
+                            if(prevPoint!=None):
+                                # Calculate a vector in the direction of the line of size newBuffSize
+                                dx = point.X - prevPoint.X
+                                dy = point.Y - prevPoint.Y
+                                D = math.sqrt(dx*dx + dy*dy)
+                                dx = newBuffSize * dx / D
+                                dy = newBuffSize*dy/D
+                                rectangleCoords = []
+                                # Add the four points of the buffer rectangle by using the 
+                                # perpendicular vector and then make a polygon out of them and add to 
+                                # intermediate shape file
+                                rectangleCoords.append(arcpy.Point(prevPoint.X-dy,prevPoint.Y+dx))
+                                rectangleCoords.append(arcpy.Point(prevPoint.X+dy,prevPoint.Y-dx))
+                                rectangleCoords.append(arcpy.Point(point.X+dy,point.Y-dx))
+                                rectangleCoords.append(arcpy.Point(point.X-dy,point.Y+dx))
+                                rectangleArray = arcpy.Array(rectangleCoords)
+                                rectanglePolygon = arcpy.Polygon(rectangleArray)
+                                iCursor.insertRow([rectanglePolygon])
+                            # set the previous point to the current point before moving on.
+                            prevPoint = point
         # Use arcpy's dissolve to create the shape file for the output.
         arcpy.analysis.PairwiseDissolve(os.path.join(returnDir,'intermediate.shp'),os.path.join(returnDir,outputName))
         return "The buffer was successful!"
@@ -389,52 +389,53 @@ def polygonBuffer(returnDir,inputFile, outputName, buffSize,buffUnit):
             # Open a search cursor on the input shape file
             with arcpy.da.SearchCursor(inputFile,['SHAPE@']) as SearchCursor:
                 for row in SearchCursor:
-                    # Access the row containing the polygons geometry and access its POLYLINE boundary
-                    # and store in the pLines
-                    pLines = row[0].boundary()
-                    # Insert the original polygon geometry into the intermediate
-                    iCursor.insertRow([row[0]])
-                    # Get the Array containing the POLYLINEs from the boundary
-                    pLineArray = pLines.getPart()
-                    # The polygon boundary may be composed of multiple POLYLINEs so loop through
-                    # each line
-                    for line in pLineArray:
-                        # Set the prevPoint to None to start for each line
-                        prevPoint = None
-                        # Loop through each point in the line
-                        for point in line:
-                            # Make a list for circular buffer points
-                            circleCoordPoints = []
-                            # Make a circle buffer around each point using methods described in
-                            # point buffer
-                            for angle in np.linspace(0,360,87,endpoint=False):
-                                newX = newBuffSize*math.cos(math.radians(angle))+point.X
-                                newY = newBuffSize*math.sin(math.radians(angle))+point.Y
-                                circleCoordPoints.append(arcpy.Point(newX,newY))
-                            circlePointArray = arcpy.Array(circleCoordPoints)
-                            bufferPolygon = arcpy.Polygon(circlePointArray)
-                            iCursor.insertRow([bufferPolygon])
-                            # If the prevPoint is not none, we can construct a rectangle Buffer
-                            if(prevPoint!=None):
-                                # Calculate a vector in the direction of the line of size newBuffSize
-                                dx = point.X - prevPoint.X
-                                dy = point.Y - prevPoint.Y
-                                D = math.sqrt(dx*dx + dy*dy)
-                                dx = newBuffSize * dx / D
-                                dy = newBuffSize*dy/D
-                                rectangleCoords = []
-                                # Add the four points of the buffer rectangle by using the 
-                                # perpendicular vector and then make a polygon out of them and add to 
-                                # intermediate shape file
-                                rectangleCoords.append(arcpy.Point(prevPoint.X-dy,prevPoint.Y+dx))
-                                rectangleCoords.append(arcpy.Point(prevPoint.X+dy,prevPoint.Y-dx))
-                                rectangleCoords.append(arcpy.Point(point.X+dy,point.Y-dx))
-                                rectangleCoords.append(arcpy.Point(point.X-dy,point.Y+dx))
-                                rectangleArray = arcpy.Array(rectangleCoords)
-                                rectanglePolygon = arcpy.Polygon(rectangleArray)
-                                iCursor.insertRow([rectanglePolygon])
-                            # set the previous point to the current point before moving on.
-                            prevPoint = point
+                    if(row[0]!=None):
+                        # Access the row containing the polygons geometry and access its POLYLINE boundary
+                        # and store in the pLines
+                        pLines = row[0].boundary()
+                        # Insert the original polygon geometry into the intermediate
+                        iCursor.insertRow([row[0]])
+                        # Get the Array containing the POLYLINEs from the boundary
+                        pLineArray = pLines.getPart()
+                        # The polygon boundary may be composed of multiple POLYLINEs so loop through
+                        # each line
+                        for line in pLineArray:
+                            # Set the prevPoint to None to start for each line
+                            prevPoint = None
+                            # Loop through each point in the line
+                            for point in line:
+                                # Make a list for circular buffer points
+                                circleCoordPoints = []
+                                # Make a circle buffer around each point using methods described in
+                                # point buffer
+                                for angle in np.linspace(0,360,87,endpoint=False):
+                                    newX = newBuffSize*math.cos(math.radians(angle))+point.X
+                                    newY = newBuffSize*math.sin(math.radians(angle))+point.Y
+                                    circleCoordPoints.append(arcpy.Point(newX,newY))
+                                circlePointArray = arcpy.Array(circleCoordPoints)
+                                bufferPolygon = arcpy.Polygon(circlePointArray)
+                                iCursor.insertRow([bufferPolygon])
+                                # If the prevPoint is not none, we can construct a rectangle Buffer
+                                if(prevPoint!=None):
+                                    # Calculate a vector in the direction of the line of size newBuffSize
+                                    dx = point.X - prevPoint.X
+                                    dy = point.Y - prevPoint.Y
+                                    D = math.sqrt(dx*dx + dy*dy)
+                                    dx = newBuffSize * dx / D
+                                    dy = newBuffSize*dy/D
+                                    rectangleCoords = []
+                                    # Add the four points of the buffer rectangle by using the 
+                                    # perpendicular vector and then make a polygon out of them and add to 
+                                    # intermediate shape file
+                                    rectangleCoords.append(arcpy.Point(prevPoint.X-dy,prevPoint.Y+dx))
+                                    rectangleCoords.append(arcpy.Point(prevPoint.X+dy,prevPoint.Y-dx))
+                                    rectangleCoords.append(arcpy.Point(point.X+dy,point.Y-dx))
+                                    rectangleCoords.append(arcpy.Point(point.X-dy,point.Y+dx))
+                                    rectangleArray = arcpy.Array(rectangleCoords)
+                                    rectanglePolygon = arcpy.Polygon(rectangleArray)
+                                    iCursor.insertRow([rectanglePolygon])
+                                # set the previous point to the current point before moving on.
+                                prevPoint = point
         arcpy.analysis.PairwiseDissolve(os.path.join(returnDir,'intermediate.shp'),os.path.join(returnDir,outputName))
         return "The buffer was successful!"
     # If an error occured, the buffer was unsuccessful.
@@ -494,22 +495,23 @@ def multiPointBuffer(returnDir,inputFile, outputName, buffSize,buffUnit):
             # Open a search cursor on the input shape file
             with arcpy.da.SearchCursor(inputFile,['SHAPE@']) as SearchCursor:
                 for row in SearchCursor:
-                    # Get the points from the multipoint feature by accessing the geometry
-                    # and getting part
-                    lstOfPoints = row[0].getPart()
-                    # Loop through the points
-                    for point in lstOfPoints:
-                        # Make an empty list to store the buffer points
-                        circleCoordPoints = []
-                        # Make a circle buffer around each point using methods described in
-                        # point buffer
-                        for angle in np.linspace(0,360,87,endpoint=False):
-                            newX = newBuffSize*math.cos(math.radians(angle))+point.X
-                            newY = newBuffSize*math.sin(math.radians(angle))+point.Y
-                            circleCoordPoints.append(arcpy.Point(newX,newY))
-                        circlePointArray = arcpy.Array(circleCoordPoints)
-                        bufferPolygon = arcpy.Polygon(circlePointArray)
-                        iCursor.insertRow([bufferPolygon])
+                    if(row[0]!=None):
+                        # Get the points from the multipoint feature by accessing the geometry
+                        # and getting part
+                        lstOfPoints = row[0].getPart()
+                        # Loop through the points
+                        for point in lstOfPoints:
+                            # Make an empty list to store the buffer points
+                            circleCoordPoints = []
+                            # Make a circle buffer around each point using methods described in
+                            # point buffer
+                            for angle in np.linspace(0,360,87,endpoint=False):
+                                newX = newBuffSize*math.cos(math.radians(angle))+point.X
+                                newY = newBuffSize*math.sin(math.radians(angle))+point.Y
+                                circleCoordPoints.append(arcpy.Point(newX,newY))
+                            circlePointArray = arcpy.Array(circleCoordPoints)
+                            bufferPolygon = arcpy.Polygon(circlePointArray)
+                            iCursor.insertRow([bufferPolygon])
         # If this all happens return a success message
         return "The buffer was successful!"
     # If an error occured, the buffer was unsuccessful
