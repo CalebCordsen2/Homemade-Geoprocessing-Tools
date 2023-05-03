@@ -218,8 +218,7 @@ def lineBuffer(returnDir,inputFile, outputName, buffSize, buffUnit):
         This should be a string representing a file path to the directory/folder you wish to save
         your created buffer file to.
     inputFile : This should be a string representing a file path.
-        This should be a string representing a file path that points to a valid shape file made up 
-        of points.
+        This should be a string representing a file path that points to a valid polyline shape file.
     outputName : This should be a string representing a file name and extension.
         This should be a string representing a file name and extension. This will be 
         the name of the outputted buffer shape file.
@@ -323,7 +322,7 @@ def lineBuffer(returnDir,inputFile, outputName, buffSize, buffUnit):
                         # set the previous point to the current point before moving on.
                         prevPoint = point
         # Use arcpy's dissolve to create the shape file for the output.
-        arcpy.management.Dissolve(os.path.join(returnDir,'intermediate.shp'),os.path.join(returnDir,outputName))
+        arcpy.analysis.PairwiseDissolve(os.path.join(returnDir,'intermediate.shp'),os.path.join(returnDir,outputName))
         return "The buffer was successful!"
     # If an error occured, the buffer was unsuccessful.
     except:
@@ -337,8 +336,7 @@ def polygonBuffer(returnDir,inputFile, outputName, buffSize,buffUnit):
         This should be a string representing a file path to the directory/folder you wish to save
         your created buffer file to.
     inputFile : This should be a string representing a file path.
-        This should be a string representing a file path that points to a valid shape file made up 
-        of points.
+        This should be a string representing a file path that points to a valid polygon shape file.
     outputName : This should be a string representing a file name and extension.
         This should be a string representing a file name and extension. This will be 
         the name of the outputted buffer shape file.
@@ -437,15 +435,12 @@ def polygonBuffer(returnDir,inputFile, outputName, buffSize,buffUnit):
                                 iCursor.insertRow([rectanglePolygon])
                             # set the previous point to the current point before moving on.
                             prevPoint = point
-        #arcpy.management.Dissolve(os.path.join(returnDir,'intermediate.shp'),os.path.join(returnDir,outputName))
+        arcpy.analysis.PairwiseDissolve(os.path.join(returnDir,'intermediate.shp'),os.path.join(returnDir,outputName))
         return "The buffer was successful!"
     # If an error occured, the buffer was unsuccessful.
     except:
         return "The buffer was unsuccessful. Sorry!"
     
-    
-    
-
 def multiPointBuffer(returnDir,inputFile, outputName, buffSize,buffUnit):
     '''
     Parameters
@@ -454,8 +449,7 @@ def multiPointBuffer(returnDir,inputFile, outputName, buffSize,buffUnit):
         This should be a string representing a file path to the directory/folder you wish to save
         your created buffer file to.
     inputFile : This should be a string representing a file path.
-        This should be a string representing a file path that points to a valid shape file made up 
-        of points.
+        This should be a string representing a file path that points to a valid multipoint shape file.
     outputName : This should be a string representing a file name and extension.
         This should be a string representing a file name and extension. This will be 
         the name of the outputted buffer shape file.
@@ -530,13 +524,12 @@ def bufferMain(returnDir,inputFile, outputName, buffSize, buffUnit):
         This should be a string representing a file path to the directory/folder you wish to save
         your created buffer file to.
     inputFile : This should be a string representing a file path.
-        This should be a string representing a file path that points to a valid shape file made up 
-        of points.
+        This should be a string representing a file path that points to a valid shape file.
     outputName : This should be a string representing a file name and extension.
         This should be a string representing a file name and extension. This will be 
         the name of the outputted buffer shape file.
-    buffSize : This should be a number.
-        This should be a number representing how big you want the buffer to be.
+    buffSize : This should be a float.
+        This should be a float representing how big you want the buffer to be.
     buffUnit: This should be a string,
         This should be a string representing the unit associated with the desired buffered size.
         Restricted to the units available in the unit conversion function.
@@ -572,3 +565,53 @@ def bufferMain(returnDir,inputFile, outputName, buffSize, buffUnit):
     # geometry type.
     else:
         return "Sorry that geometry type is not recognized and thus cannot be buffered!"
+
+def batchBuffer(returnDirs,inputFiles, outputNames, buffSizes, buffUnits):
+    '''
+    Parameters
+    ----------
+    returnDirs : A list of strings representing file paths.
+        This should be a list of strings representing file paths to the directories/folders you wish to save
+        your created buffer files to.
+    inputFiles : A list of strings representing file paths.
+        This should be a list of strings representing file paths that point to a series of valid shape files.
+    outputNames : This should be a list of strings representing a series of file names and extensions.
+        This should be a list of strings representing a series of file names and extensions. These will be 
+        the names of the outputted buffer shape files.
+    buffSizes : This should be a list of floats.
+        This should be a list of floats representing how big you want each buffer in the series to be.
+    buffUnits : This should be a list of strings,
+        This should be a list of strings representing the unit associated with the desired buffered size for the series.
+        Restricted to the units available in the unit conversion function.
+
+    Returns
+    -------
+    A list of strings where each entry in the list represents whether the buffer at that index failed or succeeded
+    
+    Description
+    -----------
+    The batchBuffer function does a batch of buffers on multiple inputted files. The inputs are formated in lists
+    where each entry in the list represents a buffer to be done. The entry must be consistent across the different input lists.
+    For example, everything at index 0 across the different lists represents the input for one buffer to be done. The inputFile at
+    index 0 in the inputFiles list will have a buffer ran on it of the size and unit at index 0 in buffSizes and buffUnits and will
+    be outputted to the file location made from index 0 of the returnDirs and outputNames. This will return a list of status's
+    where S represents a successful buffer and F represents a failed buffer. Ultimately the logic of this function is to call
+    the bufferMain function on each list entry.
+    '''
+    # Check to make sure the input lists are all of same size. If they aren't return an error message
+    if(len(returnDirs)!=len(inputFiles) or len(inputFiles)!=len(outputNames) or len(outputNames)!=len(buffSizes) or len(buffSizes)!=len(buffUnits)):
+        return "Please input lists of all the same size!"
+    else:
+        # If they are the same size create an empty return list
+        returnList = []
+        # Loop through the lists
+        for index in range(len(returnDirs)):
+            # Store in x the return message from running a buffer at each index
+            x = bufferMain(returnDirs[index],inputFiles[index],outputNames[index],buffSizes[index],buffUnits[index])
+            # If the return message was a success append a S, otherwise a F
+            if(x == "The buffer was successful!"):
+                returnList.append("S")
+            else:
+                returnList.append("F")
+        # Return the list of return messages
+        return returnList
